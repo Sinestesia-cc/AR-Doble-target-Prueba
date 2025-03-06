@@ -13,38 +13,37 @@
             overflow: hidden;
             background: #000;
         }
-        #loading-bar {
+        #unity-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        #unity-canvas {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+        #unity-loading-bar {
             position: absolute;
-            left: 0;
-            right: 0;
+            left: 25%;
             top: 50%;
+            width: 50%;
             height: 20px;
-            margin-top: -10px;
             background: #333;
             z-index: 100;
         }
-        #progress-bar {
+        #unity-progress-bar-full {
             width: 0%;
             height: 100%;
             background: #0095ff;
-            transition: width 0.2s;
         }
-        #loading-text {
+        #unity-logo {
             position: absolute;
             width: 100%;
             text-align: center;
             top: 40%;
             color: white;
             font-family: Arial, sans-serif;
-        }
-        #unity-canvas {
-            width: 100%;
-            height: 100%;
-            position: absolute;
-            top: 0;
-            left: 0;
-            background: transparent;
-            touch-action: none;
         }
         #video-canvas {
             width: 100%;
@@ -58,6 +57,47 @@
             position: absolute;
             visibility: hidden;
         }
+        #startARDiv {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 99;
+        }
+        #startARButton {
+            padding: 12px 24px;
+            background: #0095ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #errorDiv {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 999;
+        }
+        #errorText {
+            color: #ff5555;
+            text-align: center;
+            width: 80%;
+            font-family: Arial, sans-serif;
+        }
     </style>
 </head>
 <body>
@@ -69,72 +109,84 @@
     <!-- Elementos AR -->
     <video id="webcam-video" muted autoplay playsinline></video>
     <canvas id="video-canvas"></canvas>
-    <canvas id="unity-canvas"></canvas>
     
-    <!-- UI minimalista -->
-    <div id="loading-text">Cargando AR...</div>
-    <div id="loading-bar">
-        <div id="progress-bar"></div>
+    <!-- Botón de inicio simplificado -->
+    <div id="startARDiv">
+        <div id="unity-logo">AR Cintac</div>
+        <button id="startARButton" onclick="StartAR()">Iniciar AR</button>
+    </div>
+    
+    <!-- Mensaje de error -->
+    <div id="errorDiv">
+        <p id="errorText"></p>
+    </div>
+    
+    <!-- Container Unity -->
+    <div id="unity-container">
+        <canvas id="unity-canvas"></canvas>
+        <div id="unity-loading-bar">
+            <div id="unity-progress-bar-full"></div>
+        </div>
     </div>
 
     <script>
-        // Configuración optimizada para bajo rendimiento
+        // Configuración optimizada para dispositivos de baja gama
+        window.unityFacingMode = "environment";
         window.WEBCAM_SETTINGS = {
             video: {
                 facingMode: "environment",
                 width: { ideal: 240 },
                 height: { ideal: 180 },
-                frameRate: { max: 10 }
+                frameRate: { max: 12 }
             },
             audio: false
         };
-
-        let progressBar = document.getElementById("progress-bar");
-        let loadingText = document.getElementById("loading-text");
-        let loadingBar = document.getElementById("loading-bar");
-        let unityCanvas = document.getElementById("unity-canvas");
-        let videoCanvas = document.getElementById("video-canvas");
-        let webcamVideo = document.getElementById("webcam-video");
         
-        // Inicializar AR
-        async function initializeAR() {
+        window.requestingForPermissions = false;
+        
+        // Variables globales
+        var unityCanvas = document.querySelector("#unity-canvas");
+        var videoCanvas = document.querySelector("#video-canvas");
+        var progressBarFull = document.querySelector("#unity-progress-bar-full");
+        var loadingBar = document.querySelector("#unity-loading-bar");
+        
+        // Inicialización de AR
+        var initialize = async() => {
             try {
-                // Inicializar AR Camera
                 window.arCamera = new ARCamera(unityCanvas, videoCanvas);
-                
-                // Inicializar Image Tracker
                 window.iTracker = new ImageTracker(arCamera);
                 
                 try {
                     await window.iTracker.initialize("./opencv.js");
                     console.log("ImageTracker inicializado");
                     
-                    // Configurar optimización para rendimiento
+                    // Configuración optimizada del tracker
                     window.ITRACKER_GLOBALS = {
-                        INTERNAL_SMOOTHFACTOR_POS: 0.1,  // Menos suavizado para mejor rendimiento
+                        INTERNAL_SMOOTHFACTOR_POS: 0.1
                     };
                 } catch (error) {
                     console.error("Error al inicializar ImageTracker:", error);
-                    showError("Error al inicializar el sistema de seguimiento");
+                    ShowError("No se pudo inicializar el sistema de AR");
                     return;
                 }
                 
-                // Iniciar Unity
-                loadUnity();
+                // Verificar permisos de cámara
+                window.permissionsGranted = await IsCameraPermissionGranted();
             } catch (error) {
                 console.error("Error en la inicialización:", error);
-                showError("Error al inicializar la experiencia AR");
+                ShowError("Error al configurar la experiencia AR");
             }
-        }
+        };
         
-        // Cargar Unity de forma optimizada
-        function loadUnity() {
-            // Establecer tamaño de canvas
-            const devicePixelRatio = Math.min(window.devicePixelRatio, 1.5);
-            unityCanvas.style.width = "100%";
-            unityCanvas.style.height = "100%";
+        // Iniciar AR al hacer clic en el botón
+        function StartAR() {
+            document.getElementById("startARDiv").style.display = "none";
             
-            // Crear instancia de Unity con opciones optimizadas
+            // Ajustar canvas
+            unityCanvas.style.width = window.innerWidth + "px";
+            unityCanvas.style.height = window.innerHeight + "px";
+            
+            // Configurar Unity con opciones optimizadas
             createUnityInstance(unityCanvas, {
                 dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
                 frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
@@ -143,87 +195,149 @@
                 companyName: "Sinestesia",
                 productName: "AR Cintac",
                 productVersion: "1.4.0",
-                devicePixelRatio: devicePixelRatio,
-                powerPreference: "low-power"
+                powerPreference: "low-power",
+                devicePixelRatio: Math.min(window.devicePixelRatio, 1.5)
             }, (progress) => {
-                // Actualizar barra de progreso
-                progressBar.style.width = Math.round(progress * 100) + "%";
-                if (progress === 1) {
-                    loadingText.textContent = "Iniciando cámara...";
-                }
-            }).then(async (unityInstance) => {
+                progressBarFull.style.width = 100 * progress + "%";
+            }).then((unityInstance) => {
                 window.unityInstance = unityInstance;
                 
-                // Ocultar elementos de carga
-                loadingBar.style.display = "none";
-                loadingText.style.display = "none";
-                
-                // Activar cámara
-                try {
-                    await startCamera();
-                } catch (error) {
-                    console.error("Error al iniciar la cámara:", error);
-                    showError("No se pudo acceder a la cámara");
+                // Iniciar cámara automáticamente si ya hay permisos
+                if(window.permissionsGranted) {
+                    RequestWebcam();
                 }
+                
+                loadingBar.style.display = "none";
             }).catch((error) => {
                 console.error("Error al cargar Unity:", error);
-                showError("Error al cargar el modelo 3D");
+                ShowError("No se pudo cargar la aplicación AR");
             });
+            
+            loadingBar.style.display = "block";
         }
         
-        // Iniciar la cámara de manera optimizada
-        async function startCamera() {
+        // Funciones esenciales que Unity busca
+        async function RequestWebcam() {
+            window.requestingForPermissions = true;
             try {
-                // Solicitar acceso a la cámara con configuración de baja resolución
-                const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
-                webcamVideo.srcObject = stream;
-                
-                // Iniciar procesamiento de webcam
-                await arCamera.startWebcam(webcamVideo);
-                console.log("Cámara iniciada correctamente");
-                
-                // Notificar a Unity que la cámara está lista
-                if (window.unityInstance) {
-                    window.unityInstance.SendMessage('ARCamera', 'OnStartWebcamSuccess');
-                }
+                window.webcamStream = await navigator.mediaDevices.getUserMedia(window.WEBCAM_SETTINGS);
+                console.log("Acceso a la cámara concedido");
+                window.requestingForPermissions = false;
+                StopWebcam(); // Liberar temporalmente la cámara
             } catch (error) {
-                console.error("Error al iniciar la cámara:", error);
-                if (window.unityInstance) {
+                console.error("Error al acceder a la cámara:", error);
+                ShowError("No se pudo acceder a la cámara");
+                window.requestingForPermissions = false;
+            }
+        }
+        
+        function StopWebcam() {
+            if(window.webcamStream) {
+                window.webcamStream.getTracks().forEach(track => track.stop());
+            }
+        }
+        
+        // Esta función es crucial - Unity la busca directamente
+        async function StartWebcam() {
+            console.log("Iniciando cámara...");
+            try {
+                window.webcamStream = await navigator.mediaDevices.getUserMedia(window.WEBCAM_SETTINGS);
+                
+                while (window.requestingForPermissions) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                if(window.webcamStream) {
+                    const video = document.querySelector("#webcam-video");
+                    video.srcObject = window.webcamStream;
+                    
+                    try {
+                        await arCamera.startWebcam(video);
+                        console.log("Cámara iniciada correctamente");
+                        window.unityInstance.SendMessage('ARCamera', 'OnStartWebcamSuccess');
+                    } catch(error) {
+                        console.error("Error al iniciar la cámara:", error);
+                        window.unityInstance.SendMessage('ARCamera', 'OnStartWebcamFail');
+                    }
+                } else {
+                    console.error("No se pudo acceder a la cámara");
                     window.unityInstance.SendMessage('ARCamera', 'OnStartWebcamFail');
                 }
-                showError("Error al acceder a la cámara");
+            } catch(error) {
+                console.error("Error al acceder a la cámara:", error);
+                if(window.unityInstance) {
+                    window.unityInstance.SendMessage('ARCamera', 'OnStartWebcamFail');
+                }
+                ShowError("No se pudo iniciar la cámara");
             }
         }
         
-        // Función para mostrar errores de forma minimalista
-        function showError(message) {
-            loadingText.textContent = message;
-            loadingText.style.color = "#ff5555";
-            loadingBar.style.display = "none";
+        // Verificar permisos de cámara
+        async function IsCameraPermissionGranted() {
+            if (!navigator.permissions || !navigator.mediaDevices) {
+                console.log("API de permisos o dispositivos multimedia no compatible");
+                return false;
+            }
+            
+            try {
+                const permissionStatus = await navigator.permissions.query({ name: "camera" });
+                return permissionStatus.state === "granted";
+            } catch (error) {
+                console.log("Error al verificar permisos de cámara:", error);
+                return false;
+            }
         }
         
-        // Gestión de recursos
+        // Mostrar errores
+        function ShowError(error) {
+            document.getElementById("errorDiv").style.display = "flex";
+            document.getElementById("errorText").innerHTML = error;
+        }
+        
+        // Gestión del ciclo de vida
         function handleVisibilityChange() {
             if (document.hidden && window.unityInstance) {
-                // Pausar recursos cuando no está visible
-                if (arCamera) arCamera.pause();
-            } else {
-                // Reanudar recursos
-                if (arCamera) arCamera.resume();
+                if (window.webcamStream) {
+                    window.webcamStream.getTracks().forEach(track => track.enabled = false);
+                }
+            } else if (window.unityInstance) {
+                if (window.webcamStream) {
+                    window.webcamStream.getTracks().forEach(track => track.enabled = true);
+                }
             }
         }
         
-        // Escuchadores de eventos
+        // Función utilizada por Unity para cambiar cámara
+        async function FlipCam() {
+            if(arCamera) arCamera.stopWebcam();
+            window.WEBCAM_SETTINGS.video.deviceId = '';
+            
+            if(window.WEBCAM_SETTINGS.video.facingMode == 'user') {
+                window.WEBCAM_SETTINGS.video.facingMode = 'environment';
+                arCamera.setFlipped(false);
+            } else {
+                window.WEBCAM_SETTINGS.video.facingMode = 'user';
+                arCamera.setFlipped(true);
+            }
+            
+            window.webcamStream = await navigator.mediaDevices.getUserMedia(window.WEBCAM_SETTINGS);
+            const video = document.querySelector("#webcam-video");
+            video.srcObject = window.webcamStream;
+            await arCamera.startWebcam(video);
+        }
+        
+        // Manejadores de eventos
         document.addEventListener("visibilitychange", handleVisibilityChange);
-        window.addEventListener("load", initializeAR);
+        window.addEventListener("load", initialize);
         window.addEventListener("resize", () => {
-            if (window.unityInstance) {
-                window.unityInstance.SendMessage('ARCamera', 'UpdateScreenSize');
+            if(unityCanvas) {
+                unityCanvas.width = window.innerWidth;
+                unityCanvas.height = window.innerHeight;
             }
         });
     </script>
     
-    <!-- Cargar scripts de manera optimizada -->
+    <!-- Cargar scripts -->
     <script src="arcamera.js"></script>
     <script src="itracker.js"></script>
     <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
