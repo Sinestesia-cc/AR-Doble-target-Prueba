@@ -1,166 +1,231 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AR Cintac</title>
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-    }
-    #loading-screen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.5em;
-      z-index: 100;
-    }
-    #unity-canvas {
-      width: 100%;
-      height: 100%;
-      background: transparent;
-      touch-action: none;
-    }
-    #webcam-video, #video-canvas {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-      pointer-events: none;
-    }
-  </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=yes">
+    <title>AR Cintac</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+        #loading-bar {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 20px;
+            margin-top: -10px;
+            background: #333;
+            z-index: 100;
+        }
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #0095ff;
+            transition: width 0.2s;
+        }
+        #loading-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            top: 40%;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #unity-canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: transparent;
+            touch-action: none;
+        }
+        #video-canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            z-index: -1;
+        }
+        #webcam-video {
+            width: 1px;
+            height: 1px;
+            position: absolute;
+            visibility: hidden;
+        }
+    </style>
 </head>
 <body>
-  <div id="loading-screen">Cargando AR...</div>
-  
-  <video id="webcam-video" muted autoplay playsinline></video>
-  <canvas id="video-canvas"></canvas>
-  <canvas id="unity-canvas"></canvas>
-  
-  <script>
-    let unityCanvas;
-    let unityInstance;
+    <!-- Imagen targets -->
+    <imagetarget id='Panel-CROWN_AR01' src='targets/Panel-CROWN_AR01.jpg'></imagetarget>
+    <imagetarget id='Panel-YC_AR01' src='targets/Panel-YC_AR01.jpg'></imagetarget>
+    <imagetarget id='qrcode(1)' src='targets/qrcode(1).jpeg'></imagetarget>
+
+    <!-- Elementos AR -->
+    <video id="webcam-video" muted autoplay playsinline></video>
+    <canvas id="video-canvas"></canvas>
+    <canvas id="unity-canvas"></canvas>
     
-    // Configuración optimizada para webcam
-    const WEBCAM_SETTINGS = {
-      video: {
-        facingMode: 'environment',
-        width: { ideal: 240 },
-        height: { ideal: 180 },
-        frameRate: { max: 10 }
-      }
-    };
+    <!-- UI minimalista -->
+    <div id="loading-text">Cargando AR...</div>
+    <div id="loading-bar">
+        <div id="progress-bar"></div>
+    </div>
 
-    // Combinar las funciones de ARCamera y ImageTracker para reducir código
-    async function initAR() {
-      try {
-        // Iniciar la cámara con ajustes de rendimiento bajo
-        const video = document.getElementById("webcam-video");
-        const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
-        video.srcObject = stream;
+    <script>
+        // Configuración optimizada para bajo rendimiento
+        window.WEBCAM_SETTINGS = {
+            video: {
+                facingMode: "environment",
+                width: { ideal: 240 },
+                height: { ideal: 180 },
+                frameRate: { max: 10 }
+            },
+            audio: false
+        };
+
+        let progressBar = document.getElementById("progress-bar");
+        let loadingText = document.getElementById("loading-text");
+        let loadingBar = document.getElementById("loading-bar");
+        let unityCanvas = document.getElementById("unity-canvas");
+        let videoCanvas = document.getElementById("video-canvas");
+        let webcamVideo = document.getElementById("webcam-video");
         
-        // Inicializar Unity WebGL con tamaño reducido
-        unityCanvas = document.getElementById("unity-canvas");
+        // Inicializar AR
+        async function initializeAR() {
+            try {
+                // Inicializar AR Camera
+                window.arCamera = new ARCamera(unityCanvas, videoCanvas);
+                
+                // Inicializar Image Tracker
+                window.iTracker = new ImageTracker(arCamera);
+                
+                try {
+                    await window.iTracker.initialize("./opencv.js");
+                    console.log("ImageTracker inicializado");
+                    
+                    // Configurar optimización para rendimiento
+                    window.ITRACKER_GLOBALS = {
+                        INTERNAL_SMOOTHFACTOR_POS: 0.1,  // Menos suavizado para mejor rendimiento
+                    };
+                } catch (error) {
+                    console.error("Error al inicializar ImageTracker:", error);
+                    showError("Error al inicializar el sistema de seguimiento");
+                    return;
+                }
+                
+                // Iniciar Unity
+                loadUnity();
+            } catch (error) {
+                console.error("Error en la inicialización:", error);
+                showError("Error al inicializar la experiencia AR");
+            }
+        }
         
-        // Configurar tamaño para mejor rendimiento
-        const devicePixelRatio = Math.min(window.devicePixelRatio, 1.5);
-        unityCanvas.width = window.innerWidth * devicePixelRatio;
-        unityCanvas.height = window.innerHeight * devicePixelRatio;
+        // Cargar Unity de forma optimizada
+        function loadUnity() {
+            // Establecer tamaño de canvas
+            const devicePixelRatio = Math.min(window.devicePixelRatio, 1.5);
+            unityCanvas.style.width = "100%";
+            unityCanvas.style.height = "100%";
+            
+            // Crear instancia de Unity con opciones optimizadas
+            createUnityInstance(unityCanvas, {
+                dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
+                frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
+                codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
+                streamingAssetsUrl: "StreamingAssets",
+                companyName: "Sinestesia",
+                productName: "AR Cintac",
+                productVersion: "1.4.0",
+                devicePixelRatio: devicePixelRatio,
+                powerPreference: "low-power"
+            }, (progress) => {
+                // Actualizar barra de progreso
+                progressBar.style.width = Math.round(progress * 100) + "%";
+                if (progress === 1) {
+                    loadingText.textContent = "Iniciando cámara...";
+                }
+            }).then(async (unityInstance) => {
+                window.unityInstance = unityInstance;
+                
+                // Ocultar elementos de carga
+                loadingBar.style.display = "none";
+                loadingText.style.display = "none";
+                
+                // Activar cámara
+                try {
+                    await startCamera();
+                } catch (error) {
+                    console.error("Error al iniciar la cámara:", error);
+                    showError("No se pudo acceder a la cámara");
+                }
+            }).catch((error) => {
+                console.error("Error al cargar Unity:", error);
+                showError("Error al cargar el modelo 3D");
+            });
+        }
         
-        // Cargar Unity con ajustes optimizados
-        document.getElementById("loading-screen").textContent = "Iniciando AR...";
+        // Iniciar la cámara de manera optimizada
+        async function startCamera() {
+            try {
+                // Solicitar acceso a la cámara con configuración de baja resolución
+                const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
+                webcamVideo.srcObject = stream;
+                
+                // Iniciar procesamiento de webcam
+                await arCamera.startWebcam(webcamVideo);
+                console.log("Cámara iniciada correctamente");
+                
+                // Notificar a Unity que la cámara está lista
+                if (window.unityInstance) {
+                    window.unityInstance.SendMessage('ARCamera', 'OnStartWebcamSuccess');
+                }
+            } catch (error) {
+                console.error("Error al iniciar la cámara:", error);
+                if (window.unityInstance) {
+                    window.unityInstance.SendMessage('ARCamera', 'OnStartWebcamFail');
+                }
+                showError("Error al acceder a la cámara");
+            }
+        }
         
-        createUnityInstance(unityCanvas, {
-          dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
-          frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
-          codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
-          streamingAssetsUrl: "StreamingAssets",
-          companyName: "Sinestesia",
-          productName: "AR Cintac",
-          productVersion: "1.4.0",
-          // Opciones de rendimiento adicionales
-          devicePixelRatio: devicePixelRatio,
-          powerPreference: "low-power",
-          showBanner: false
-        }).then((instance) => {
-          unityInstance = instance;
-          document.getElementById("loading-screen").style.display = "none";
-          
-          // Cargar las imágenes de seguimiento de forma diferida
-          if (window.iTracker && typeof iTracker.loadReferenceImages === 'function') {
-            iTracker.loadReferenceImages();
-          }
-        }).catch((error) => {
-          console.error("Error al cargar Unity:", error);
-          document.getElementById("loading-screen").textContent = 
-            "Error al cargar la aplicación. Intente nuevamente.";
+        // Función para mostrar errores de forma minimalista
+        function showError(message) {
+            loadingText.textContent = message;
+            loadingText.style.color = "#ff5555";
+            loadingBar.style.display = "none";
+        }
+        
+        // Gestión de recursos
+        function handleVisibilityChange() {
+            if (document.hidden && window.unityInstance) {
+                // Pausar recursos cuando no está visible
+                if (arCamera) arCamera.pause();
+            } else {
+                // Reanudar recursos
+                if (arCamera) arCamera.resume();
+            }
+        }
+        
+        // Escuchadores de eventos
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        window.addEventListener("load", initializeAR);
+        window.addEventListener("resize", () => {
+            if (window.unityInstance) {
+                window.unityInstance.SendMessage('ARCamera', 'UpdateScreenSize');
+            }
         });
-      } catch (error) {
-        console.error("Error al iniciar AR:", error);
-        document.getElementById("loading-screen").textContent = 
-          "Error al iniciar la cámara. Verifique los permisos.";
-      }
-    }
-
-    // Función simplificada para gestionar la pausa/reanudación
-    function handleVisibilityChange() {
-      if (document.hidden) {
-        // Pausar recursos cuando la página no está visible
-        if (unityInstance && typeof unityInstance.SetFullscreen === 'function') {
-          unityInstance.SendMessage('ARManager', 'PauseTracking');
-        }
-      } else {
-        // Reanudar cuando la página vuelve a ser visible
-        if (unityInstance && typeof unityInstance.SetFullscreen === 'function') {
-          unityInstance.SendMessage('ARManager', 'ResumeTracking');
-        }
-      }
-    }
-
-    // Optimización para manejo de memoria
-    function lowMemoryHandler() {
-      if (unityInstance && typeof unityInstance.SetFullscreen === 'function') {
-        unityInstance.SendMessage('ARManager', 'LowMemoryWarning');
-      }
-    }
-
-    // Escuchadores optimizados
-    window.addEventListener("load", initAR);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("resize", () => {
-      if (unityCanvas && unityInstance) {
-        const devicePixelRatio = Math.min(window.devicePixelRatio, 1.5);
-        unityCanvas.width = window.innerWidth * devicePixelRatio;
-        unityCanvas.height = window.innerHeight * devicePixelRatio;
-        unityInstance.SendMessage('ARManager', 'UpdateScreenSize');
-      }
-    });
-
-    // Detector de memoria baja para dispositivos
-    if ('memory' in performance) {
-      setInterval(() => {
-        if (performance.memory.usedJSHeapSize > performance.memory.jsHeapSizeLimit * 0.8) {
-          lowMemoryHandler();
-        }
-      }, 10000);
-    }
-  </script>
-  
-  <!-- Carga diferida de scripts principales -->
-  <script src="arcamera.js" defer></script>
-  <script src="itracker.js" defer></script>
-  <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
+    </script>
+    
+    <!-- Cargar scripts de manera optimizada -->
+    <script src="arcamera.js"></script>
+    <script src="itracker.js"></script>
+    <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
 </body>
 </html>
