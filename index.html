@@ -1,105 +1,124 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Experience</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-            background: #000;
-        }
-        #unity-canvas {
-            width: 100%;
-            height: 100%;
-            background: transparent;
-        }
-        #video-canvas {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            position: absolute;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AR Cintac</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    /* Pantalla de carga */
+    #loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+      color: #fff;
+      font-size: 1.5em;
+      z-index: 10;
+    }
+    /* Canvas principal para el modelo 3D */
+    #unity-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    /* Elementos usados internamente, no se muestran */
+    #webcam-video, #video-canvas {
+      display: none;
+    }
+  </style>
 </head>
 <body>
-    <video id="webcam-video" muted autoplay playsinline style="display:none"></video>
-    <canvas id="video-canvas"></canvas>
-    
-    <div id="unity-container">
-        <canvas id="unity-canvas"></canvas>
-    </div>
+  <!-- Pantalla de carga -->
+  <div id="loading-screen">Cargando AR...</div>
+  
+  <!-- Elementos ocultos para el procesamiento de la cámara -->
+  <video id="webcam-video" muted autoplay playsinline></video>
+  <canvas id="video-canvas"></canvas>
+  
+  <!-- Canvas donde se renderizará el modelo 3D (Unity) -->
+  <canvas id="unity-canvas"></canvas>
+  
+  <!-- Scripts necesarios -->
+  <script src="arcamera.js"></script>
+  <script src="itracker.js"></script>
+  <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
+  
+  <script>
+    // Parámetros reducidos para mayor rendimiento en smartphones de gama baja
+    const WEBCAM_SETTINGS = {
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 320 },
+        height: { ideal: 240 },
+        frameRate: { ideal: 15 }
+      }
+    };
 
-    <script src="arcamera.js"></script>
-    <script src="itracker.js"></script>
-    <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
+    async function initAR() {
+      try {
+        // 1. Iniciar la cámara con los ajustes mínimos
+        const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
+        const video = document.getElementById("webcam-video");
+        video.srcObject = stream;
+        
+        // 2. Inicializar ARCamera y el canvas del tracker
+        const unityCanvas = document.getElementById("unity-canvas");
+        const videoCanvas = document.getElementById("video-canvas");
+        window.arCamera = new ARCamera(unityCanvas, videoCanvas);
+        await arCamera.startWebcam(video);
+        
+        // 3. Inicializar el ImageTracker (cargando opencv.js)
+        window.iTracker = new ImageTracker(arCamera);
+        await iTracker.initialize("opencv.js");
+        
+        // 4. Ocultar la pantalla de carga y lanzar Unity para mostrar el modelo 3D
+        document.getElementById("loading-screen").style.display = "none";
+        initUnity(unityCanvas);
+        
+      } catch (error) {
+        console.error("Error al iniciar AR:", error);
+        alert("Error al iniciar AR: " + error.message);
+      }
+    }
 
-    <script>
-        const WEBCAM_SETTINGS = {
-            video: {
-                facingMode: 'environment',
-                width: { ideal: 640 },
-                height: { ideal: 360 },
-                frameRate: { ideal: 30 }
-            }
-        };
+    function initUnity(canvas) {
+      createUnityInstance(canvas, {
+        dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
+        frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
+        codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "Sinestesia",
+        productName: "AR Cintac",
+        productVersion: "1.4.0"
+      }).then(instance => {
+        window.unityInstance = instance;
+        instance.SetFullscreen(1);
+      });
+    }
 
-        async function initializeAR() {
-            try {
-                // 1. Iniciar cámara primero
-                const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
-                const video = document.getElementById('webcam-video');
-                video.srcObject = stream;
-                
-                // 2. Inicializar ARCamera con el stream activo
-                const unityCanvas = document.getElementById('unity-canvas');
-                const videoCanvas = document.getElementById('video-canvas');
-                window.arCamera = new ARCamera(unityCanvas, videoCanvas);
-                await arCamera.startWebcam(video);
-                
-                // 3. Inicializar ImageTracker
-                window.iTracker = new ImageTracker(arCamera);
-                await iTracker.initialize("./opencv.js");
-                
-                // 4. Cargar Unity después de tener la cámara activa
-                initUnity();
-                
-            } catch(error) {
-                console.error('Error de inicialización:', error);
-                alert('Error al iniciar la cámara: ' + error.message);
-            }
-        }
+    // Inicia todo al cargar la página
+    window.addEventListener("load", initAR);
 
-        function initUnity() {
-            createUnityInstance(unityCanvas, {
-                dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
-                frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
-                codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
-                streamingAssetsUrl: "StreamingAssets",
-                companyName: "Sinestesia",
-                productName: "AR Cintac",
-                productVersion: "1.4.0"
-            }).then((unityInstance) => {
-                window.unityInstance = unityInstance;
-                // Forzar redimensionamiento inicial
-                unityInstance.SetFullscreen(1);
-            });
-        }
-
-        // Manejar cambio de orientación
-        window.onresize = () => {
-            if(window.unityInstance) {
-                unityCanvas.width = window.innerWidth;
-                unityCanvas.height = window.innerHeight;
-            }
-        };
-
-        // Iniciar al cargar
-        window.addEventListener('load', initializeAR);
-    </script>
+    // Asegura que el canvas se ajuste al tamaño de la ventana
+    window.addEventListener("resize", () => {
+      const canvas = document.getElementById("unity-canvas");
+      if (canvas) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+    });
+  </script>
 </body>
 </html>
