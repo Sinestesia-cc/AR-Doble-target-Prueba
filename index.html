@@ -19,44 +19,42 @@
       left: 0;
       width: 100%;
       height: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
       background: #000;
       color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-size: 1.5em;
-      z-index: 10;
+      z-index: 100;
     }
-    /* Canvas principal para el modelo 3D */
+    /* Canvas para Unity */
     #unity-canvas {
       width: 100%;
       height: 100%;
-      display: block;
+      background: transparent;
     }
-    /* Elementos usados internamente, no se muestran */
+    /* Elementos ocultos */
     #webcam-video, #video-canvas {
       display: none;
     }
   </style>
 </head>
 <body>
-  <!-- Pantalla de carga -->
   <div id="loading-screen">Cargando AR...</div>
   
-  <!-- Elementos ocultos para el procesamiento de la cámara -->
   <video id="webcam-video" muted autoplay playsinline></video>
   <canvas id="video-canvas"></canvas>
-  
-  <!-- Canvas donde se renderizará el modelo 3D (Unity) -->
   <canvas id="unity-canvas"></canvas>
   
-  <!-- Scripts necesarios -->
   <script src="arcamera.js"></script>
   <script src="itracker.js"></script>
   <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
   
   <script>
-    // Parámetros reducidos para mayor rendimiento en smartphones de gama baja
+    // Declarar variable global para el canvas de Unity
+    let unityCanvas;
+    
+    // Parámetros reducidos para mayor rendimiento en dispositivos de gama baja
     const WEBCAM_SETTINGS = {
       video: {
         facingMode: 'environment',
@@ -66,35 +64,34 @@
       }
     };
 
-    async function initAR() {
+    async function initializeAR() {
       try {
-        // 1. Iniciar la cámara con los ajustes mínimos
+        // 1. Iniciar la cámara
         const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
         const video = document.getElementById("webcam-video");
         video.srcObject = stream;
         
-        // 2. Inicializar ARCamera y el canvas del tracker
-        const unityCanvas = document.getElementById("unity-canvas");
+        // 2. Configurar ARCamera y obtener el canvas de Unity
+        unityCanvas = document.getElementById("unity-canvas");
         const videoCanvas = document.getElementById("video-canvas");
         window.arCamera = new ARCamera(unityCanvas, videoCanvas);
         await arCamera.startWebcam(video);
         
-        // 3. Inicializar el ImageTracker (cargando opencv.js)
+        // 3. Inicializar el ImageTracker (con opencv.js)
         window.iTracker = new ImageTracker(arCamera);
         await iTracker.initialize("opencv.js");
         
-        // 4. Ocultar la pantalla de carga y lanzar Unity para mostrar el modelo 3D
+        // 4. Ocultar la pantalla de carga y cargar Unity
         document.getElementById("loading-screen").style.display = "none";
-        initUnity(unityCanvas);
-        
+        initUnity();
       } catch (error) {
         console.error("Error al iniciar AR:", error);
         alert("Error al iniciar AR: " + error.message);
       }
     }
 
-    function initUnity(canvas) {
-      createUnityInstance(canvas, {
+    function initUnity() {
+      createUnityInstance(unityCanvas, {
         dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
         frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
         codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
@@ -102,23 +99,24 @@
         companyName: "Sinestesia",
         productName: "AR Cintac",
         productVersion: "1.4.0"
-      }).then(instance => {
-        window.unityInstance = instance;
-        instance.SetFullscreen(1);
+      }).then((unityInstance) => {
+        window.unityInstance = unityInstance;
+        unityInstance.SetFullscreen(1);
+      }).catch((error) => {
+        console.error("Error al cargar Unity:", error);
       });
     }
 
-    // Inicia todo al cargar la página
-    window.addEventListener("load", initAR);
-
-    // Asegura que el canvas se ajuste al tamaño de la ventana
+    // Actualiza el tamaño del canvas al cambiar la ventana
     window.addEventListener("resize", () => {
-      const canvas = document.getElementById("unity-canvas");
-      if (canvas) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+      if(unityCanvas) {
+        unityCanvas.width = window.innerWidth;
+        unityCanvas.height = window.innerHeight;
       }
     });
+
+    // Iniciar AR al cargar la página
+    window.addEventListener("load", initializeAR);
   </script>
 </body>
 </html>
