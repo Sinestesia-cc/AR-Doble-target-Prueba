@@ -34,12 +34,6 @@
 </head>
 <body>
     <!--IMAGETARGETS-->
-		<imagetarget id='bear' src='targets/bear.png'></imagetarget>
-		<imagetarget id='bfly' src='targets/bfly.png'></imagetarget>
-		<imagetarget id='flower' src='targets/flower.png'></imagetarget>
-		<imagetarget id='lady' src='targets/lady.png'></imagetarget>
-		<imagetarget id='reel' src='targets/reel.png'></imagetarget>
-		<imagetarget id='rmn' src='targets/rmn.png'></imagetarget>
 		<imagetarget id='Panel-CROWN_AR01' src='targets/Panel-CROWN_AR01.jpg'></imagetarget>
 		<imagetarget id='Panel-YC_AR01' src='targets/Panel-YC_AR01.jpg'></imagetarget>
 		<imagetarget id='qrcode(1)' src='targets/qrcode(1).jpeg'></imagetarget>
@@ -48,8 +42,8 @@
     <canvas id="video-canvas" style="width:100%; height:100%; object-fit:cover; position:absolute"></canvas>
     <div id="startARDiv" class="ctaDiv">
         <select id="chooseCamSel" style="display: none;" onchange="SelectCam()"></select>
-        <p style="text-align: center; width:60vw;">This augmented reality experience requires access to your device's camera</p>
-        <button id="startARButton" onclick="StartAR()" style="display:none">ALLOW ACCESS</button>
+        <p style="text-align: center; width:60vw;">blablabla gfgfgfgfgfgf</p>
+        <button id="startARButton" onclick="StartAR()" style="display:none">Permitir</button>
     </div>
     <div id="screenshotDiv" style="display: none;" class="ctaDiv">
         <div style="position:relative; background-color:white; padding:10px; box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.3), 0 6px 20px 0 rgba(0, 0, 0, 0.25);">
@@ -113,12 +107,12 @@
                 
                 document.getElementById("startARDiv").style.display = "none";
                 createUnityInstance(document.querySelector("#unity-canvas"), {
-                    dataUrl: "Build/dcd2fbb1e0dddda1d956b5570a997539.data",
+                    dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
                     frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
                     codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
                     streamingAssetsUrl: "StreamingAssets",
-                    companyName: "JohannesDeml",
-                    productName: "WebLoadingTest",
+                    companyName: "Sinestesia",
+                    productName: "AR Cintac",
                     productVersion: "1.4.0",
                     //webglContextAttributes: { "preserveDrawingBuffer": true },
                     // matchWebGLToCanvasSize: false, // Uncomment this to separately control WebGL canvas render size and DOM element size.
