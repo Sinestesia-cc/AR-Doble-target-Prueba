@@ -11,8 +11,8 @@
       width: 100%;
       height: 100%;
       background: #000;
+      overflow: hidden;
     }
-    /* Pantalla de carga */
     #loading-screen {
       position: fixed;
       top: 0;
@@ -27,15 +27,18 @@
       font-size: 1.5em;
       z-index: 100;
     }
-    /* Canvas para Unity */
     #unity-canvas {
       width: 100%;
       height: 100%;
       background: transparent;
+      touch-action: none;
     }
-    /* Elementos ocultos */
     #webcam-video, #video-canvas {
-      display: none;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -46,77 +49,118 @@
   <canvas id="video-canvas"></canvas>
   <canvas id="unity-canvas"></canvas>
   
-  <script src="arcamera.js"></script>
-  <script src="itracker.js"></script>
-  <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
-  
   <script>
-    // Declarar variable global para el canvas de Unity
     let unityCanvas;
+    let unityInstance;
     
-    // Parámetros reducidos para mayor rendimiento en dispositivos de gama baja
+    // Configuración optimizada para webcam
     const WEBCAM_SETTINGS = {
       video: {
         facingMode: 'environment',
-        width: { ideal: 320 },
-        height: { ideal: 240 },
-        frameRate: { ideal: 15 }
+        width: { ideal: 240 },
+        height: { ideal: 180 },
+        frameRate: { max: 10 }
       }
     };
 
-    async function initializeAR() {
+    // Combinar las funciones de ARCamera y ImageTracker para reducir código
+    async function initAR() {
       try {
-        // 1. Iniciar la cámara
-        const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
+        // Iniciar la cámara con ajustes de rendimiento bajo
         const video = document.getElementById("webcam-video");
+        const stream = await navigator.mediaDevices.getUserMedia(WEBCAM_SETTINGS);
         video.srcObject = stream;
         
-        // 2. Configurar ARCamera y obtener el canvas de Unity
+        // Inicializar Unity WebGL con tamaño reducido
         unityCanvas = document.getElementById("unity-canvas");
-        const videoCanvas = document.getElementById("video-canvas");
-        window.arCamera = new ARCamera(unityCanvas, videoCanvas);
-        await arCamera.startWebcam(video);
         
-        // 3. Inicializar el ImageTracker (con opencv.js)
-        window.iTracker = new ImageTracker(arCamera);
-        await iTracker.initialize("opencv.js");
+        // Configurar tamaño para mejor rendimiento
+        const devicePixelRatio = Math.min(window.devicePixelRatio, 1.5);
+        unityCanvas.width = window.innerWidth * devicePixelRatio;
+        unityCanvas.height = window.innerHeight * devicePixelRatio;
         
-        // 4. Ocultar la pantalla de carga y cargar Unity
-        document.getElementById("loading-screen").style.display = "none";
-        initUnity();
+        // Cargar Unity con ajustes optimizados
+        document.getElementById("loading-screen").textContent = "Iniciando AR...";
+        
+        createUnityInstance(unityCanvas, {
+          dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
+          frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
+          codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
+          streamingAssetsUrl: "StreamingAssets",
+          companyName: "Sinestesia",
+          productName: "AR Cintac",
+          productVersion: "1.4.0",
+          // Opciones de rendimiento adicionales
+          devicePixelRatio: devicePixelRatio,
+          powerPreference: "low-power",
+          showBanner: false
+        }).then((instance) => {
+          unityInstance = instance;
+          document.getElementById("loading-screen").style.display = "none";
+          
+          // Cargar las imágenes de seguimiento de forma diferida
+          if (window.iTracker && typeof iTracker.loadReferenceImages === 'function') {
+            iTracker.loadReferenceImages();
+          }
+        }).catch((error) => {
+          console.error("Error al cargar Unity:", error);
+          document.getElementById("loading-screen").textContent = 
+            "Error al cargar la aplicación. Intente nuevamente.";
+        });
       } catch (error) {
         console.error("Error al iniciar AR:", error);
-        alert("Error al iniciar AR: " + error.message);
+        document.getElementById("loading-screen").textContent = 
+          "Error al iniciar la cámara. Verifique los permisos.";
       }
     }
 
-    function initUnity() {
-      createUnityInstance(unityCanvas, {
-        dataUrl: "Build/6f15aa496fc7aed21e074e35a99a58d7.data",
-        frameworkUrl: "Build/18b6ba94afa8d1af90b4b151dd6b0da4.framework.js",
-        codeUrl: "Build/6b1f320e7020949b0fb210d5b26cc57c.wasm",
-        streamingAssetsUrl: "StreamingAssets",
-        companyName: "Sinestesia",
-        productName: "AR Cintac",
-        productVersion: "1.4.0"
-      }).then((unityInstance) => {
-        window.unityInstance = unityInstance;
-        unityInstance.SetFullscreen(1);
-      }).catch((error) => {
-        console.error("Error al cargar Unity:", error);
-      });
+    // Función simplificada para gestionar la pausa/reanudación
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        // Pausar recursos cuando la página no está visible
+        if (unityInstance && typeof unityInstance.SetFullscreen === 'function') {
+          unityInstance.SendMessage('ARManager', 'PauseTracking');
+        }
+      } else {
+        // Reanudar cuando la página vuelve a ser visible
+        if (unityInstance && typeof unityInstance.SetFullscreen === 'function') {
+          unityInstance.SendMessage('ARManager', 'ResumeTracking');
+        }
+      }
     }
 
-    // Actualiza el tamaño del canvas al cambiar la ventana
+    // Optimización para manejo de memoria
+    function lowMemoryHandler() {
+      if (unityInstance && typeof unityInstance.SetFullscreen === 'function') {
+        unityInstance.SendMessage('ARManager', 'LowMemoryWarning');
+      }
+    }
+
+    // Escuchadores optimizados
+    window.addEventListener("load", initAR);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("resize", () => {
-      if(unityCanvas) {
-        unityCanvas.width = window.innerWidth;
-        unityCanvas.height = window.innerHeight;
+      if (unityCanvas && unityInstance) {
+        const devicePixelRatio = Math.min(window.devicePixelRatio, 1.5);
+        unityCanvas.width = window.innerWidth * devicePixelRatio;
+        unityCanvas.height = window.innerHeight * devicePixelRatio;
+        unityInstance.SendMessage('ARManager', 'UpdateScreenSize');
       }
     });
 
-    // Iniciar AR al cargar la página
-    window.addEventListener("load", initializeAR);
+    // Detector de memoria baja para dispositivos
+    if ('memory' in performance) {
+      setInterval(() => {
+        if (performance.memory.usedJSHeapSize > performance.memory.jsHeapSizeLimit * 0.8) {
+          lowMemoryHandler();
+        }
+      }, 10000);
+    }
   </script>
+  
+  <!-- Carga diferida de scripts principales -->
+  <script src="arcamera.js" defer></script>
+  <script src="itracker.js" defer></script>
+  <script src="Build/c4c617d74cb9d73dd7036720d3475599.loader.js"></script>
 </body>
 </html>
